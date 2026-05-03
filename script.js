@@ -44,8 +44,11 @@
 
   let imageIdSeq = 0;
   let splitReviewNextId = 0;
-  /** @type {{ originalFile: File, items: { blob: Blob, url: string, tempId: number }[], resolve: function(any): void, hint: string } | null} */
+  /** @type {{ originalFile: File, items: { blob: Blob, url: string, tempId: number }[], resolve: function(any): void, hint: string, naturalRects?: { x:number,w:number,y:number,h:number }[], naturalWidth?: number, naturalHeight?: number } | null} */
   let splitReviewPending = null;
+
+  /** Состояние модалки ручной сетки (линии в долях 0–1). */
+  let manualSplitRuntime = null;
 
   // ——— DOM ———
   const el = {
@@ -58,10 +61,23 @@
     splitBusy: document.getElementById("splitBusy"),
     splitHint: document.getElementById("splitHint"),
     splitReviewSection: document.getElementById("splitReviewSection"),
+    splitReviewBannerText: document.getElementById("splitReviewBannerText"),
     splitReviewLead: document.getElementById("splitReviewLead"),
     splitReviewGrid: document.getElementById("splitReviewGrid"),
     btnSplitConfirm: document.getElementById("btnSplitConfirm"),
     btnSplitCancel: document.getElementById("btnSplitCancel"),
+    btnSplitManual: document.getElementById("btnSplitManual"),
+    manualSplitModal: document.getElementById("manualSplitModal"),
+    manualSplitBackdrop: document.getElementById("manualSplitBackdrop"),
+    manualSplitImg: document.getElementById("manualSplitImg"),
+    manualSplitOverlay: document.getElementById("manualSplitOverlay"),
+    manualSplitFooterHint: document.getElementById("manualSplitFooterHint"),
+    btnManualSplitClose: document.getElementById("btnManualSplitClose"),
+    btnManualAddV: document.getElementById("btnManualAddV"),
+    btnManualAddH: document.getElementById("btnManualAddH"),
+    btnManualClearLines: document.getElementById("btnManualClearLines"),
+    btnManualSplitApply: document.getElementById("btnManualSplitApply"),
+    btnManualSplitDismiss: document.getElementById("btnManualSplitDismiss"),
     brandForm: document.getElementById("brand-form"),
     btnAnalyze: document.getElementById("btnAnalyze"),
     btnMoodboard: document.getElementById("btnMoodboard"),
@@ -254,7 +270,7 @@
     });
   }
 
-  function openSplitReviewAwaitUser(originalFile, blobs, hint) {
+  function openSplitReviewAwaitUser(originalFile, blobs, hint, meta = {}) {
     return new Promise((resolve) => {
       const items = blobs.map((blob) => ({
         blob,
@@ -266,16 +282,229 @@
         items,
         resolve,
         hint: hint || "",
+        naturalRects: meta.naturalRects,
+        naturalWidth: meta.naturalWidth,
+        naturalHeight: meta.naturalHeight,
       };
-      const hintPart = splitReviewPending.hint ? ` (${splitReviewPending.hint})` : "";
-      el.splitReviewLead.textContent = `Найдено ${blobs.length} фрагментов из «${originalFile.name}». Удалите ошибочные миниатюры крестиком, затем нажмите «Добавить фрагменты в галерею» или оставьте целый скриншот.${hintPart}`;
+      if (el.splitReviewBannerText) {
+        el.splitReviewBannerText.textContent =
+          "Проверьте, верно ли прошло разделение скриншота на отдельные посты. Если да — нажмите «Добавить фрагменты в галерею». Если границы прошли не там — «Разделить самостоятельно»: добавьте и двигайте вертикальные и горизонтальные линии, затем «Готово».";
+      }
+      const hintPart = splitReviewPending.hint ? ` ${splitReviewPending.hint}` : "";
+      el.splitReviewLead.textContent = `«${originalFile.name}» · ${blobs.length} фрагментов. Лишние миниатюры можно убрать крестиком.${hintPart}`;
       el.splitReviewSection.hidden = false;
       renderSplitReviewGrid();
       el.splitReviewSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   }
 
+  function normalizedCutsFromRects(rects, natW, natH) {
+    if (!rects || !rects.length || !natW || !natH) return { vCuts: [], hCuts: [] };
+    const xs = new Set();
+    const ys = new Set();
+    rects.forEach((r) => {
+      xs.add(r.x / natW);
+      xs.add((r.x + r.w) / natW);
+      ys.add(r.y / natH);
+      ys.add((r.y + r.h) / natH);
+    });
+    const dedupe = (values) => {
+      const eps = 0.012;
+      const sorted = [...values].sort((a, b) => a - b);
+      const out = [];
+      sorted.forEach((v) => {
+        if (v <= eps || v >= 1 - eps) return;
+        if (!out.length || v - out[out.length - 1] > eps) out.push(v);
+      });
+      return out;
+    };
+    return { vCuts: dedupe([...xs]), hCuts: dedupe([...ys]) };
+  }
+
+  function updateManualSplitFooterHint() {
+    if (!manualSplitRuntime || !el.manualSplitFooterHint) return;
+    const cols = manualSplitRuntime.vCuts.length + 1;
+    const rows = manualSplitRuntime.hCuts.length + 1;
+    const total = cols * rows;
+    el.manualSplitFooterHint.textContent =
+      total < 2
+        ? `Сетка: ${cols} × ${rows}. Добавьте линии — нужно минимум два фрагмента.`
+        : `Сетка: ${cols} × ${rows} — будет ${total} фрагментов.`;
+  }
+
+  function endManualSplitDrag() {
+    window.removeEventListener("pointermove", onManualSplitPointerMove);
+    window.removeEventListener("pointerup", endManualSplitDrag);
+    window.removeEventListener("pointercancel", endManualSplitDrag);
+    if (manualSplitRuntime) manualSplitRuntime.drag = null;
+  }
+
+  function renderManualSplitOverlay() {
+    if (!manualSplitRuntime || !el.manualSplitOverlay) return;
+    el.manualSplitOverlay.innerHTML = "";
+    manualSplitRuntime.vCuts.forEach((t, index) => {
+      const line = document.createElement("div");
+      line.className = "manual-split-line manual-split-line--v";
+      line.style.left = `${t * 100}%`;
+      line.dataset.kind = "v";
+      line.dataset.index = String(index);
+      line.title = "Перетащите или дважды щёлкните, чтобы удалить";
+      bindManualSplitLine(line, "v", index);
+      el.manualSplitOverlay.appendChild(line);
+    });
+    manualSplitRuntime.hCuts.forEach((t, index) => {
+      const line = document.createElement("div");
+      line.className = "manual-split-line manual-split-line--h";
+      line.style.top = `${t * 100}%`;
+      line.dataset.kind = "h";
+      line.dataset.index = String(index);
+      line.title = "Перетащите или дважды щёлкните, чтобы удалить";
+      bindManualSplitLine(line, "h", index);
+      el.manualSplitOverlay.appendChild(line);
+    });
+    updateManualSplitFooterHint();
+  }
+
+  function bindManualSplitLine(line, kind, index) {
+    line.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!manualSplitRuntime) return;
+      const arr = kind === "v" ? manualSplitRuntime.vCuts : manualSplitRuntime.hCuts;
+      arr.splice(index, 1);
+      renderManualSplitOverlay();
+    });
+
+    line.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      manualSplitRuntime.drag = {
+        kind,
+        index,
+        lineEl: line,
+        pointerId: e.pointerId,
+      };
+      window.addEventListener("pointermove", onManualSplitPointerMove);
+      window.addEventListener("pointerup", endManualSplitDrag);
+      window.addEventListener("pointercancel", endManualSplitDrag);
+    });
+  }
+
+  function onManualSplitPointerMove(e) {
+    const d = manualSplitRuntime?.drag;
+    if (!d || e.pointerId !== d.pointerId || !el.manualSplitOverlay) return;
+    const rect = el.manualSplitOverlay.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) return;
+
+    if (d.kind === "v") {
+      let nx = (e.clientX - rect.left) / rect.width;
+      nx = Math.min(0.985, Math.max(0.015, nx));
+      manualSplitRuntime.vCuts[d.index] = nx;
+      d.lineEl.style.left = `${nx * 100}%`;
+    } else {
+      let ny = (e.clientY - rect.top) / rect.height;
+      ny = Math.min(0.985, Math.max(0.015, ny));
+      manualSplitRuntime.hCuts[d.index] = ny;
+      d.lineEl.style.top = `${ny * 100}%`;
+    }
+  }
+
+  function openManualSplitEditor() {
+    const p = splitReviewPending;
+    if (!p || !el.manualSplitModal || !el.manualSplitImg || !el.manualSplitOverlay) return;
+
+    if (manualSplitRuntime) closeManualSplitEditor();
+
+    const splitter = getScreenshotSplitter();
+    if (!splitter || typeof splitter.splitByNormalizedCuts !== "function") {
+      alert("Ручное разделение недоступно. Обновите страницу.");
+      return;
+    }
+
+    let vCuts = [];
+    let hCuts = [];
+    if (p.naturalRects && p.naturalWidth && p.naturalHeight) {
+      const seed = normalizedCutsFromRects(p.naturalRects, p.naturalWidth, p.naturalHeight);
+      vCuts = seed.vCuts.slice();
+      hCuts = seed.hCuts.slice();
+    }
+
+    const imgUrl = URL.createObjectURL(p.originalFile);
+    manualSplitRuntime = { vCuts, hCuts, imgObjectUrl: imgUrl, drag: null };
+
+    el.manualSplitImg.onload = () => {
+      renderManualSplitOverlay();
+    };
+    el.manualSplitImg.src = imgUrl;
+    el.manualSplitModal.hidden = false;
+    document.body.style.overflow = "hidden";
+
+    if (el.manualSplitImg.complete && el.manualSplitImg.naturalWidth > 0) {
+      renderManualSplitOverlay();
+    }
+  }
+
+  function closeManualSplitEditor() {
+    endManualSplitDrag();
+    if (!el.manualSplitModal) return;
+    el.manualSplitModal.hidden = true;
+    document.body.style.overflow = "";
+    if (manualSplitRuntime?.imgObjectUrl) {
+      URL.revokeObjectURL(manualSplitRuntime.imgObjectUrl);
+    }
+    manualSplitRuntime = null;
+    if (el.manualSplitOverlay) el.manualSplitOverlay.innerHTML = "";
+    if (el.manualSplitImg) el.manualSplitImg.removeAttribute("src");
+  }
+
+  function manualSplitAddLine(kind) {
+    if (!manualSplitRuntime) return;
+    const arr = kind === "v" ? manualSplitRuntime.vCuts : manualSplitRuntime.hCuts;
+    let t = 0.5;
+    let guard = 0;
+    while (arr.some((x) => Math.abs(x - t) < 0.035) && guard < 40) {
+      t += 0.055;
+      if (t > 0.94) t = 0.08;
+      guard++;
+    }
+    arr.push(t);
+    renderManualSplitOverlay();
+  }
+
+  async function applyManualSplitCuts() {
+    const p = splitReviewPending;
+    const rt = manualSplitRuntime;
+    if (!p || !rt) return;
+
+    const splitter = getScreenshotSplitter();
+    try {
+      const blobs = await splitter.splitByNormalizedCuts(p.originalFile, rt.vCuts, rt.hCuts);
+      if (!blobs || blobs.length < 2) {
+        alert(
+          "Не удалось получить несколько фрагментов: добавьте линии так, чтобы появились отдельные ячейки (минимум два фрагмента)."
+        );
+        return;
+      }
+      revokeSplitReviewItems(p.items);
+      p.items = blobs.map((blob) => ({
+        blob,
+        url: URL.createObjectURL(blob),
+        tempId: ++splitReviewNextId,
+      }));
+      delete p.naturalRects;
+      delete p.naturalWidth;
+      delete p.naturalHeight;
+      renderSplitReviewGrid();
+      el.splitReviewLead.textContent = `«${p.originalFile.name}» · ${blobs.length} фрагментов (после ручной сетки). Удалите лишнее крестиком при необходимости.`;
+      closeManualSplitEditor();
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось разделить изображение по линиям.");
+    }
+  }
+
   function confirmSplitAddFragments() {
+    closeManualSplitEditor();
     const p = splitReviewPending;
     if (!p || typeof p.resolve !== "function") return;
     if (!p.items.length) {
@@ -292,6 +521,7 @@
   }
 
   function cancelSplitUseOriginal() {
+    closeManualSplitEditor();
     const p = splitReviewPending;
     if (!p || typeof p.resolve !== "function") return;
     const res = p.resolve;
@@ -327,7 +557,11 @@
         showSplitBusy(false);
 
         if (!result.useOriginalOnly && result.blobs && result.blobs.length > 1) {
-          const choice = await openSplitReviewAwaitUser(file, result.blobs, result.hint || "");
+          const choice = await openSplitReviewAwaitUser(file, result.blobs, result.hint || "", {
+            naturalRects: result.naturalRects,
+            naturalWidth: result.naturalWidth,
+            naturalHeight: result.naturalHeight,
+          });
           if (!choice.useOriginal && choice.blobs && choice.blobs.length) {
             const base = (file.name || "screen").replace(/\.[^.]+$/, "") || "screen";
             for (let i = 0; i < choice.blobs.length; i++) {
@@ -2290,6 +2524,21 @@ ul.kit strong{display:block;color:#1c1b19;margin-bottom:0.25rem;}
 
   if (el.btnSplitConfirm) el.btnSplitConfirm.addEventListener("click", confirmSplitAddFragments);
   if (el.btnSplitCancel) el.btnSplitCancel.addEventListener("click", cancelSplitUseOriginal);
+  if (el.btnSplitManual) el.btnSplitManual.addEventListener("click", openManualSplitEditor);
+
+  if (el.manualSplitBackdrop) el.manualSplitBackdrop.addEventListener("click", closeManualSplitEditor);
+  if (el.btnManualSplitClose) el.btnManualSplitClose.addEventListener("click", closeManualSplitEditor);
+  if (el.btnManualSplitDismiss) el.btnManualSplitDismiss.addEventListener("click", closeManualSplitEditor);
+  if (el.btnManualAddV) el.btnManualAddV.addEventListener("click", () => manualSplitAddLine("v"));
+  if (el.btnManualAddH) el.btnManualAddH.addEventListener("click", () => manualSplitAddLine("h"));
+  if (el.btnManualClearLines)
+    el.btnManualClearLines.addEventListener("click", () => {
+      if (!manualSplitRuntime) return;
+      manualSplitRuntime.vCuts = [];
+      manualSplitRuntime.hCuts = [];
+      renderManualSplitOverlay();
+    });
+  if (el.btnManualSplitApply) el.btnManualSplitApply.addEventListener("click", () => void applyManualSplitCuts());
 
   if (el.moodboardGrid) {
     el.moodboardGrid.addEventListener("click", (e) => {
@@ -2408,6 +2657,10 @@ ul.kit strong{display:block;color:#1c1b19;margin-bottom:0.25rem;}
   });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    if (el.manualSplitModal && !el.manualSplitModal.hidden) {
+      closeManualSplitEditor();
+      return;
+    }
     if (!el.modal.hidden) closeModal();
     if (el.dnaExportModal && !el.dnaExportModal.hidden) closeDnaExportModal();
     if (el.moodboardExportModal && !el.moodboardExportModal.hidden) closeMoodboardExportModal();

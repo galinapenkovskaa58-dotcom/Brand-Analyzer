@@ -119,17 +119,21 @@
       <div class="alert alert--info" id="splitHint" role="status" hidden></div>
 
       <p class="hint">
-        Если на скриншоте несколько постов в сетке, сервис попробует разрезать его на отдельные кадры. В галерее можно удалить лишнее и отметить кадры для приоритета в мудборде.
+        Если на скриншоте несколько постов в сетке, сервис попробует разрезать его на отдельные кадры. После авторазделения проверьте превью; при ошибке границ используйте «Разделить самостоятельно» и задайте линии сетки вручную. В галерее можно удалить лишнее и отметить кадры для приоритета в мудборде.
       </p>
 
       <div class="split-review" id="splitReviewSection" hidden aria-labelledby="split-review-title">
         <h3 id="split-review-title" class="split-review__title">Фрагменты после авторазделения</h3>
+        <div class="split-review-banner" id="splitReviewBanner">
+          <p class="split-review-banner__text" id="splitReviewBannerText"></p>
+          <div class="split-review-banner__actions">
+            <button type="button" class="btn btn--accent" id="btnSplitConfirm">Добавить фрагменты в галерею</button>
+            <button type="button" class="btn btn--secondary" id="btnSplitManual">Разделить самостоятельно</button>
+            <button type="button" class="btn btn--ghost" id="btnSplitCancel">Оставить исходный скриншот</button>
+          </div>
+        </div>
         <p class="split-review__lead" id="splitReviewLead"></p>
         <div class="split-review-grid" id="splitReviewGrid" aria-label="Найденные кадры"></div>
-        <div class="split-review__actions btn-row">
-          <button type="button" class="btn btn--accent" id="btnSplitConfirm">Добавить фрагменты в галерею</button>
-          <button type="button" class="btn btn--ghost" id="btnSplitCancel">Оставить исходный скриншот</button>
-        </div>
       </div>
 
       <div class="gallery" id="gallery" aria-label="Галерея загруженных изображений"></div>
@@ -316,6 +320,42 @@
       </div>
       <footer class="modal__footer">
         <button type="button" class="btn btn--ghost" data-close-moodboard-export>Отмена</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Ручная сетка разделения (поверх страницы) -->
+  <div class="manual-split-modal" id="manualSplitModal" hidden>
+    <div class="manual-split-modal__backdrop" id="manualSplitBackdrop"></div>
+    <div
+      class="manual-split-modal__panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="manualSplitTitle"
+    >
+      <header class="manual-split-modal__header">
+        <h2 id="manualSplitTitle" class="manual-split-modal__title">Разделение по линиям</h2>
+        <button type="button" class="btn btn--icon" id="btnManualSplitClose" aria-label="Закрыть">×</button>
+      </header>
+      <p class="manual-split-modal__lead">
+        Добавляйте вертикальные и горизонтальные линии. Перетащите линию, чтобы сдвинуть границу; двойной щелчок —
+        удалить линию.
+      </p>
+      <div class="manual-split-modal__toolbar">
+        <button type="button" class="btn btn--secondary btn--small" id="btnManualAddV">+ Вертикальная линия</button>
+        <button type="button" class="btn btn--secondary btn--small" id="btnManualAddH">+ Горизонтальная линия</button>
+        <button type="button" class="btn btn--ghost btn--small" id="btnManualClearLines">Очистить все линии</button>
+      </div>
+      <div class="manual-split-modal__body">
+        <div class="manual-split-stage" id="manualSplitStage">
+          <img id="manualSplitImg" class="manual-split-stage__img" alt="Превью для разделения" decoding="async" />
+          <div class="manual-split-overlay" id="manualSplitOverlay" aria-hidden="true"></div>
+        </div>
+      </div>
+      <p class="manual-split-hint" id="manualSplitFooterHint"></p>
+      <footer class="manual-split-modal__footer">
+        <button type="button" class="btn btn--accent" id="btnManualSplitApply">Готово</button>
+        <button type="button" class="btn btn--ghost" id="btnManualSplitDismiss">Отмена</button>
       </footer>
     </div>
   </div>

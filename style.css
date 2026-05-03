@@ -385,6 +385,40 @@ textarea {
   background: linear-gradient(180deg, rgba(58, 111, 248, 0.04), transparent 55%);
 }
 
+.split-review-banner {
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(145deg, #1a2233 0%, #121826 55%, #0e1420 100%);
+  color: #e8ecf5;
+  box-shadow:
+    0 0 0 1px rgba(58, 111, 248, 0.18),
+    0 12px 36px rgba(0, 0, 0, 0.35);
+}
+
+.split-review-banner__text {
+  margin: 0 0 0.85rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: rgba(235, 239, 248, 0.92);
+}
+
+.split-review-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.split-review-banner__actions .btn--ghost {
+  color: #dce4f5;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.split-review-banner__actions .btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .split-review__title {
   font-family: var(--font-display);
   font-size: 1.1rem;
@@ -392,8 +426,8 @@ textarea {
 }
 
 .split-review__lead {
-  margin: 0 0 1rem;
-  font-size: 0.88rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
   color: var(--ink-muted);
 }
 
@@ -401,7 +435,156 @@ textarea {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 0.65rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
+}
+
+/* Ручное разделение — модалка поверх страницы */
+.manual-split-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(0.75rem, 3vw, 1.5rem);
+  overflow-y: auto;
+}
+
+.manual-split-modal[hidden] {
+  display: none;
+}
+
+.manual-split-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 18, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.manual-split-modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(960px, 100%);
+  margin-bottom: 2rem;
+  padding: 1.25rem 1.35rem 1.35rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-modal);
+}
+
+.manual-split-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.manual-split-modal__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+.manual-split-modal__lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.86rem;
+  color: var(--ink-muted);
+  line-height: 1.45;
+}
+
+.manual-split-modal__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.manual-split-modal__body {
+  margin-bottom: 0.65rem;
+}
+
+.manual-split-stage {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0d0f14;
+  line-height: 0;
+}
+
+.manual-split-stage__img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+}
+
+.manual-split-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.manual-split-line {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 2;
+}
+
+.manual-split-line--v {
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  transform: translateX(-50%);
+  cursor: ew-resize;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 80, 80, 0.95) 35%,
+    rgba(255, 80, 80, 0.95) 65%,
+    transparent
+  );
+}
+
+.manual-split-line--h {
+  left: 0;
+  right: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  cursor: ns-resize;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(58, 111, 248, 0.95) 35%,
+    rgba(58, 111, 248, 0.95) 65%,
+    transparent
+  );
+}
+
+.manual-split-hint {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.manual-split-modal__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+[data-theme="dark"] .split-review-banner {
+  background: linear-gradient(145deg, #121826 0%, #0f1422 50%, #0a0f18 100%);
+  border-color: rgba(122, 92, 255, 0.24);
+  box-shadow:
+    0 0 0 1px rgba(58, 111, 248, 0.15),
+    0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
 .split-review-item {

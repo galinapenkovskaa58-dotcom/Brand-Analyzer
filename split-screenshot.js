@@ -147,6 +147,74 @@
     return b;
   }
 
+  function boundariesFromCuts(natDim, cutsNorm) {
+    var eps = Math.max(2 / natDim, 1e-4);
+    var sorted = cutsNorm
+      .slice()
+      .filter(function (t) {
+        return t > eps && t < 1 - eps;
+      })
+      .sort(function (a, b) {
+        return a - b;
+      });
+    var unique = [];
+    sorted.forEach(function (t) {
+      if (!unique.length || t - unique[unique.length - 1] > eps) unique.push(t);
+    });
+    var px = unique.map(function (u) {
+      return Math.round(u * natDim);
+    });
+    var out = [0];
+    px.forEach(function (x) {
+      var last = out[out.length - 1];
+      if (x > last && x < natDim) out.push(x);
+    });
+    if (natDim > out[out.length - 1]) out.push(natDim);
+    return out;
+  }
+
+  function rectsFromBoundaryArrays(bx, by) {
+    var rects = [];
+    var i, j, x0, x1, y0, y1, w, h;
+    for (i = 0; i < bx.length - 1; i++) {
+      for (j = 0; j < by.length - 1; j++) {
+        x0 = bx[i];
+        x1 = bx[i + 1];
+        y0 = by[j];
+        y1 = by[j + 1];
+        w = x1 - x0;
+        h = y1 - y0;
+        if (w >= MIN_CELL && h >= MIN_CELL) rects.push({ x: x0, y: y0, w: w, h: h });
+      }
+    }
+    return rects;
+  }
+
+  /**
+   * Разрез по долям ширины/высоты (0–1). Линии — внутренние границы между ячейками.
+   * @param {File} file
+   * @param {number[]} vCutsNorm — вертикали (доля по X)
+   * @param {number[]} hCutsNorm — горизонтали (доля по Y)
+   * @returns {Promise<Blob[]>}
+   */
+  function splitByNormalizedCuts(file, vCutsNorm, hCutsNorm) {
+    return loadImage(file).then(function (img) {
+      var natW = img.naturalWidth;
+      var natH = img.naturalHeight;
+      var bx = boundariesFromCuts(natW, vCutsNorm || []);
+      var by = boundariesFromCuts(natH, hCutsNorm || []);
+      var rects = rectsFromBoundaryArrays(bx, by);
+      if (!rects.length) return Promise.resolve([]);
+      return Promise.all(
+        rects.map(function (r) {
+          return cropToBlob(img, natW, natH, r);
+        })
+      ).then(function (blobs) {
+        return blobs.filter(Boolean);
+      });
+    });
+  }
+
   function rectsFromSlices(colSlices, rowSlices) {
     var rects = [];
     var ci, ri, x0, y0, x1, y1;
@@ -352,16 +420,33 @@
         return cropToBlob(img, natW, natH, r);
       })
     ).then(function (blobs) {
-      var good = blobs.filter(Boolean);
+      var good = [];
+      var goodRects = [];
+      var bi;
+      for (bi = 0; bi < blobs.length; bi++) {
+        if (blobs[bi]) {
+          good.push(blobs[bi]);
+          goodRects.push(natRects[bi]);
+        }
+      }
       if (good.length <= 1) {
         return {
           useOriginalOnly: true,
           hint: "Не удалось выделить несколько постов — оставлен исходный файл.",
         };
       }
-      return { useOriginalOnly: false, blobs: good };
+      return {
+        useOriginalOnly: false,
+        blobs: good,
+        naturalRects: goodRects,
+        naturalWidth: natW,
+        naturalHeight: natH,
+      };
     });
   }
 
-  global.BrandAnalyzerScreenshotSplit = { trySplit: trySplit };
+  global.BrandAnalyzerScreenshotSplit = {
+    trySplit: trySplit,
+    splitByNormalizedCuts: splitByNormalizedCuts,
+  };
 })(typeof window !== "undefined" ? window : self);
