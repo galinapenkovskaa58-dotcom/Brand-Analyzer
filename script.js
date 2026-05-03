@@ -11,9 +11,9 @@
   const MAX_IMAGES = 30;
   const MOODBOARD_MIN = 9;
   const MOODBOARD_MAX = 12;
-  const DNA_FILENAME = "brand-analyzer-dna.html";
+  const DNA_FILENAME = "brand-analyzer-dna-report.html";
+  const DNA_FILENAME_PDF = "brand-analyzer-dna-report.pdf";
   const MOODBOARD_FILENAME = "brand-analyzer-moodboard.html";
-  const MOODBOARD_FILENAME_PNG = "brand-analyzer-moodboard.png";
   const MOODBOARD_FILENAME_PDF = "brand-analyzer-moodboard.pdf";
   const THEME_STORAGE_KEY = "brand-analyzer-theme";
 
@@ -93,6 +93,8 @@
     btnDownloadMoodboard: document.getElementById("btnDownloadMoodboard"),
     moodboardExportModal: document.getElementById("moodboardExportModal"),
     btnCloseMoodboardExport: document.getElementById("btnCloseMoodboardExport"),
+    dnaExportModal: document.getElementById("dnaExportModal"),
+    btnCloseDnaExport: document.getElementById("btnCloseDnaExport"),
     modal: document.getElementById("dnaModal"),
     modalBody: document.getElementById("dnaModalBody"),
     btnCloseModal: document.getElementById("btnCloseModal"),
@@ -1125,27 +1127,51 @@ ${postsHtml}
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
 
-  function buildDnaExportDocument(innerTableHtml, brandTitle) {
+  function buildFullDnaExportDocument(brandTitle, analysis, innerTableHtml) {
+    const visual = analysis.visualNarrative || "";
+    const assoc = analysis.associativeFieldHtml || "";
+    const content = analysis.contentStrategyHtml || "";
     return `<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>ДНК бренда — ${escapeHtml(brandTitle)}</title>
+  <title>Полный отчёт — ДНК бренда — ${escapeHtml(brandTitle)}</title>
   <style>
-    body { font-family: Georgia, serif; margin: 2rem; color: #1c1b19; background: #faf8f5; }
-    h1 { font-size: 1.5rem; }
-    table { border-collapse: collapse; width: 100%; background: #fff; }
-    th, td { border: 1px solid #e8e4de; padding: 0.75rem 1rem; vertical-align: top; text-align: left; font-size: 0.95rem; }
-    th { background: #f0ebe4; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5c5a56; }
-    td:first-child { font-weight: 600; color: #2f4f4f; white-space: nowrap; }
-    .note { font-size: 0.85rem; color: #5c5a56; margin-top: 1.5rem; }
+    body { font-family: "DM Sans", system-ui, sans-serif; margin: 2rem auto; max-width: 52rem; color: #1c1b19; background: #faf8f5; line-height: 1.5; }
+    h1 { font-size: 1.55rem; margin-bottom: 1.25rem; }
+    h2 { font-size: 1.15rem; margin: 2rem 0 0.75rem; border-bottom: 1px solid #e8e4de; padding-bottom: 0.35rem; }
+    section.report-section { margin-bottom: 1.5rem; }
+    table.dna-table { border-collapse: collapse; width: 100%; background: #fff; }
+    .dna-table th, .dna-table td { border: 1px solid #e8e4de; padding: 0.75rem 1rem; vertical-align: top; text-align: left; font-size: 0.92rem; }
+    .dna-table th { background: #f0ebe4; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5c5a56; }
+    .dna-table td:first-child { font-weight: 600; color: #2f4f4f; white-space: nowrap; }
+    .prose { font-size: 0.95rem; color: #3d3a36; }
+    .prose ul { padding-left: 1.2rem; margin: 0.5rem 0 0; }
+    .prose p { margin: 0 0 0.65rem; }
+    .prose--assoc ul { columns: 2; column-gap: 1.25rem; }
+    @media (max-width: 640px) { .prose--assoc ul { columns: 1; } }
+    .prose--assoc li { break-inside: avoid; margin-bottom: 0.35rem; }
+    .prose--content h3 { font-size: 1rem; margin: 1rem 0 0.4rem; color: #1c1b19; }
+    .content-post-list { list-style: none; padding: 0; margin: 0; }
+    .content-post-list > li { padding: 0.85rem 1rem; margin-bottom: 0.65rem; border-radius: 12px; border: 1px solid #e8e4de; background: #fff; }
+    .content-post-list strong { display: block; margin-bottom: 0.35rem; color: #1c1b19; }
+    .note { font-size: 0.85rem; color: #5c5a56; margin-top: 2rem; }
     @media print { body { background: #fff; } }
   </style>
 </head>
 <body>
-  <h1>ДНК бренда: ${escapeHtml(brandTitle)}</h1>
-  ${innerTableHtml}
-  <p class="note">Файл сформирован Brand Analyzer. Для PDF: откройте этот HTML и используйте «Печать → Сохранить как PDF» в браузере.</p>
+  <h1>Полный отчёт: ДНК бренда — ${escapeHtml(brandTitle)}</h1>
+  <section class="report-section">
+    <h2>Таблица ДНК</h2>
+    ${innerTableHtml}
+  </section>
+  <section class="report-section">
+    <h2>Визуальный код</h2>
+    <div class="prose">${visual}</div>
+  </section>
+  <section class="report-section prose prose--assoc">${assoc}</section>
+  <section class="report-section prose prose--content">${content}</section>
+  <p class="note">Файл сформирован Brand Analyzer в браузере. Для PDF из HTML: «Печать → Сохранить как PDF».</p>
 </body>
 </html>`;
   }
@@ -1974,75 +2000,211 @@ ul.kit strong{display:block;color:#1c1b19;margin-bottom:0.25rem;}
     if (el.btnCloseMoodboardExport) el.btnCloseMoodboardExport.focus();
   }
 
-  async function captureMoodboardGridCanvas() {
-    if (typeof html2canvas !== "function") {
+  /** Лимит стороны canvas: выше — в Chromium часто пустой/чёрный кадр при html2canvas. */
+  const MOODBOARD_CAPTURE_MAX_EDGE = 8192;
+
+  /** На время PNG/PDF разворачиваем скрытые «Почему в мудборде», затем возвращаем состояние. */
+  function expandMoodDetailsForExport(root) {
+    if (!root) return () => {};
+    const pairs = [];
+    root.querySelectorAll(".mood-card__why-btn").forEach((btn) => {
+      const panelId = btn.getAttribute("aria-controls");
+      const panel = panelId ? document.getElementById(panelId) : null;
+      const wasOpen = btn.getAttribute("aria-expanded") === "true";
+      pairs.push({ btn, panel, wasOpen });
+      if (!wasOpen) {
+        btn.setAttribute("aria-expanded", "true");
+        if (panel) panel.hidden = false;
+      }
+    });
+    return () => {
+      pairs.forEach(({ btn, panel, wasOpen }) => {
+        btn.setAttribute("aria-expanded", wasOpen ? "true" : "false");
+        if (panel) panel.hidden = !wasOpen;
+      });
+    };
+  }
+
+  async function waitImagesInSubtree(root) {
+    if (!root) return;
+    const imgs = Array.from(root.querySelectorAll("img"));
+    await Promise.all(
+      imgs.map((img) => {
+        if (img.complete && img.naturalHeight > 0) return Promise.resolve();
+        return new Promise((resolve) => {
+          img.addEventListener("load", resolve, { once: true });
+          img.addEventListener("error", resolve, { once: true });
+        });
+      })
+    );
+  }
+
+  /** Светлая «краска» для клона html2canvas (мудборд и блоки отчёта ДНК). */
+  function injectPdfBlockPaintStyles(clonedDoc, rootId) {
+    const st = clonedDoc.createElement("style");
+    st.setAttribute("data-pdf-export-fix", "");
+    st.textContent = `
+      #${rootId} {
+        color-scheme: light !important;
+        background-color: #faf8f5 !important;
+        background-image: none !important;
+        color: #1c1b19 !important;
+        -webkit-font-smoothing: antialiased;
+      }
+      #${rootId} table,
+      #${rootId} .dna-table {
+        background-color: #ffffff !important;
+        border-collapse: collapse !important;
+      }
+      #${rootId} th, #${rootId} td {
+        border-color: #e8e4de !important;
+        color: #1c1b19 !important;
+        background-color: #ffffff !important;
+      }
+      #${rootId} th {
+        background-color: #f0ebe4 !important;
+        color: #5c5a56 !important;
+      }
+      #${rootId} h2, #${rootId} h3 {
+        color: #1c1b19 !important;
+      }
+      #${rootId} p, #${rootId} li, #${rootId} .prose {
+        color: #3d3a36 !important;
+      }
+      #${rootId} .mood-card,
+      #${rootId} .moodboard-panel,
+      #${rootId} .mood-card__why-row,
+      #${rootId} .mood-card__details {
+        background-color: #ffffff !important;
+        background-image: none !important;
+        color: #3d3a36 !important;
+        border-color: #e8e4de !important;
+        box-shadow: none !important;
+        filter: none !important;
+      }
+      #${rootId} .mood-card__img {
+        background-color: #ebe6df !important;
+      }
+      #${rootId} .mood-card__why-btn {
+        background: #fdfcfa !important;
+        color: #1c1b19 !important;
+        border: 1px solid #e8e4de !important;
+      }
+      #${rootId} .mood-card__label,
+      #${rootId} .kit-meta {
+        color: #9a7b4f !important;
+      }
+      #${rootId} .mood-card__text {
+        color: #5c5a56 !important;
+      }
+      #${rootId} .moodboard-intro {
+        background: #ffffff !important;
+        background-image: none !important;
+        border-color: #e8e4de !important;
+        color: #5c5a56 !important;
+      }
+      #${rootId} .moodboard-block-title,
+      #${rootId} .moodboard-panel__title {
+        color: #1c1b19 !important;
+      }
+      #${rootId} .moodboard-panel__lead {
+        color: #5c5a56 !important;
+      }
+      #${rootId} .moodboard-swatch__hex {
+        color: #666666 !important;
+      }
+      #${rootId} .moodboard-kit-list strong {
+        color: #1c1b19 !important;
+      }
+      #${rootId} .content-post-list > li {
+        background: #ffffff !important;
+        border-color: #e8e4de !important;
+      }
+    `;
+    const node = clonedDoc.getElementById(rootId);
+    if (node) node.insertAdjacentElement("afterbegin", st);
+  }
+
+  let pdfExportIdSeq = 0;
+
+  async function captureHtmlElementToCanvas(element) {
+    if (!element || typeof html2canvas !== "function") {
       throw new Error("NO_HTML2CANVAS");
     }
-    const section = el.sectionMoodboard;
-    const wasHidden = section.hidden;
-    if (wasHidden) section.hidden = false;
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const dark = document.documentElement.getAttribute("data-theme") === "dark";
-    const bg = dark ? "#121110" : "#f6f4f1";
-    const target = el.moodboardCaptureRoot || el.moodboardGrid;
+    const prevId = element.getAttribute("id");
+    const uid = `pdf-cap-${++pdfExportIdSeq}-${Date.now()}`;
+    element.setAttribute("id", uid);
     try {
-      return await html2canvas(target, {
-        scale: 2,
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await waitImagesInSubtree(element);
+
+      const w = Math.max(1, Math.ceil(element.scrollWidth));
+      const h = Math.max(1, Math.ceil(element.scrollHeight));
+      let scale = Math.min(2, MOODBOARD_CAPTURE_MAX_EDGE / w, MOODBOARD_CAPTURE_MAX_EDGE / h);
+      if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+      scale = Math.max(0.5, Math.min(2, scale));
+
+      return await html2canvas(element, {
+        scale,
         useCORS: true,
         allowTaint: false,
         logging: false,
-        backgroundColor: bg,
+        backgroundColor: "#faf8f5",
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        windowWidth: document.documentElement.clientWidth,
+        windowHeight: document.documentElement.clientHeight,
+        removeContainer: true,
+        imageTimeout: 20000,
+        onclone(clonedDoc, clonedRoot) {
+          const rid = clonedRoot.id || uid;
+          injectPdfBlockPaintStyles(clonedDoc, rid);
+        },
       });
     } finally {
-      if (wasHidden) section.hidden = true;
+      if (prevId) element.setAttribute("id", prevId);
+      else element.removeAttribute("id");
     }
   }
 
-  function blobFromCanvas(canvas, type, quality) {
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("TOBLOB"))), type, quality);
-    });
+  function scaleRasterToFit(canvas, maxW, maxH) {
+    const rw = canvas.width;
+    const rh = canvas.height;
+    let imgW = maxW;
+    let imgH = (rh / rw) * imgW;
+    if (imgH > maxH) {
+      imgH = maxH;
+      imgW = (rw / rh) * imgH;
+    }
+    return { imgW, imgH };
   }
 
-  async function downloadMoodboardPng() {
-    if (!state.moodboard.length) {
-      alert("Сначала соберите мудборд.");
-      return;
-    }
-    if (typeof html2canvas !== "function") {
-      alert("Не удалось загрузить html2canvas (нужен интернет для CDN). Экспорт в PNG недоступен.");
-      return;
-    }
-    const canvas = await captureMoodboardGridCanvas();
-    const blob = await blobFromCanvas(canvas, "image/png");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = MOODBOARD_FILENAME_PNG;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2500);
-  }
+  /**
+   * Одна растровая карточка / блок — целиком на одной странице PDF (без разреза между страницами).
+   */
+  function addAtomicRasterBlockToPdf(pdf, canvas, cursorYRef) {
+    const margin = 12;
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const maxW = pageW - 2 * margin;
+    const fullInnerH = pageH - 2 * margin;
+    const gap = 6;
 
-  function appendCanvasToPdf(pdf, canvas, useJpeg) {
-    const imgData = useJpeg ? canvas.toDataURL("image/jpeg", 0.92) : canvas.toDataURL("image/png");
-    const fmt = useJpeg ? "JPEG" : "PNG";
-    const margin = 10;
-    const usableW = pdf.internal.pageSize.getWidth() - margin * 2;
-    const usableH = pdf.internal.pageSize.getHeight() - margin * 2;
-    const imgW = usableW;
-    const imgH = (canvas.height * imgW) / canvas.width;
+    let availH = pageH - margin - cursorYRef.y;
+    const heightIfFullWidth = (canvas.height / canvas.width) * maxW;
 
-    let heightLeft = imgH;
-    let y = margin;
-
-    pdf.addImage(imgData, fmt, margin, y, imgW, imgH, undefined, "FAST");
-    heightLeft -= usableH;
-
-    while (heightLeft > 1) {
-      y = margin - (imgH - heightLeft);
+    if (heightIfFullWidth > availH + 0.5 && cursorYRef.y > margin + 3) {
       pdf.addPage();
-      pdf.addImage(imgData, fmt, margin, y, imgW, imgH, undefined, "FAST");
-      heightLeft -= usableH;
+      cursorYRef.y = margin;
+      availH = fullInnerH;
     }
+
+    const { imgW, imgH } = scaleRasterToFit(canvas, maxW, availH);
+    const imgData = canvas.toDataURL("image/png");
+    const x = margin + (maxW - imgW) / 2;
+    pdf.addImage(imgData, "PNG", x, cursorYRef.y, imgW, imgH);
+    cursorYRef.y += imgH + gap;
   }
 
   async function downloadMoodboardPdf() {
@@ -2051,27 +2213,68 @@ ul.kit strong{display:block;color:#1c1b19;margin-bottom:0.25rem;}
       return;
     }
     const jspdfLib = window.jspdf;
-    const JsPDF = jspdfLib && typeof jspdfLib.jsPDF === "function" ? jspdfLib.jsPDF : typeof window.jsPDF === "function" ? window.jsPDF : null;
+    const JsPDF =
+      jspdfLib && typeof jspdfLib.jsPDF === "function"
+        ? jspdfLib.jsPDF
+        : typeof window.jsPDF === "function"
+          ? window.jsPDF
+          : null;
     if (typeof html2canvas !== "function" || !JsPDF) {
       alert("Не удалось загрузить библиотеки для PDF. Проверьте интернет и обновите страницу.");
       return;
     }
-    const canvas = await captureMoodboardGridCanvas();
-    const pdf = new JsPDF({ orientation: "p", unit: "mm", format: "a4" });
-    appendCanvasToPdf(pdf, canvas, true);
-    pdf.save(MOODBOARD_FILENAME_PDF);
+
+    const section = el.sectionMoodboard;
+    const wasHidden = section.hidden;
+    if (wasHidden) section.hidden = false;
+
+    const root = el.moodboardCaptureRoot;
+    const restoreDetails = expandMoodDetailsForExport(root);
+
+    try {
+      root.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      await waitImagesInSubtree(root);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      /** @type {HTMLElement[]} */
+      const blocks = [];
+      if (el.moodboardIntro && el.moodboardIntro.textContent.trim()) blocks.push(el.moodboardIntro);
+      const blockTitle = root.querySelector(".moodboard-block-title");
+      if (blockTitle) blocks.push(blockTitle);
+      root.querySelectorAll(".moodboard-grid .mood-card").forEach((node) => blocks.push(node));
+      root.querySelectorAll(".moodboard-panel").forEach((node) => blocks.push(node));
+
+      const pdf = new JsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      const cursorYRef = { y: 12 };
+
+      for (let i = 0; i < blocks.length; i++) {
+        const canvas = await captureHtmlElementToCanvas(blocks[i]);
+        addAtomicRasterBlockToPdf(pdf, canvas, cursorYRef);
+      }
+
+      pdf.save(MOODBOARD_FILENAME_PDF);
+    } finally {
+      restoreDetails();
+      if (wasHidden) section.hidden = true;
+    }
   }
 
   async function runMoodboardExport(format) {
     closeMoodboardExportModal();
     try {
       if (format === "html") await downloadMoodboardHtml();
-      else if (format === "png") await downloadMoodboardPng();
       else if (format === "pdf") await downloadMoodboardPdf();
     } catch (err) {
       console.error(err);
       alert(
-        "Не удалось сформировать файл мудборда. Для PNG и PDF проверьте интернет (CDN), разрешите загрузку скриптов и попробуйте снова."
+        "Не удалось сформировать файл мудборда. Для PDF проверьте интернет (CDN), разрешите загрузку скриптов и попробуйте снова."
       );
     }
   }
@@ -2111,16 +2314,91 @@ ul.kit strong{display:block;color:#1c1b19;margin-bottom:0.25rem;}
   el.btnMoodboard.addEventListener("click", () => void buildMoodboardInternal({ rebuild: false }));
   el.btnRebuildMoodboard.addEventListener("click", () => void buildMoodboardInternal({ rebuild: true }));
 
-  function downloadDnaFile() {
+  function downloadFullDnaHtml() {
     if (!state.analysis) return;
     const brand = getBrandPayload();
     const inner = buildTableHtml(state.analysis.rows, { forExport: true });
-    const html = buildDnaExportDocument(inner, brand.brandName || "Бренд");
+    const html = buildFullDnaExportDocument(brand.brandName || "Бренд", state.analysis, inner);
     downloadTextFile(DNA_FILENAME, html, "text/html;charset=utf-8");
   }
 
-  el.btnDownloadDna.addEventListener("click", downloadDnaFile);
-  if (el.btnDownloadDnaQuick) el.btnDownloadDnaQuick.addEventListener("click", downloadDnaFile);
+  async function downloadFullDnaPdf() {
+    if (!state.analysis) return;
+    const jspdfLib = window.jspdf;
+    const JsPDF =
+      jspdfLib && typeof jspdfLib.jsPDF === "function"
+        ? jspdfLib.jsPDF
+        : typeof window.jsPDF === "function"
+          ? window.jsPDF
+          : null;
+    if (typeof html2canvas !== "function" || !JsPDF) {
+      alert("Не удалось загрузить библиотеки для PDF. Проверьте интернет и обновите страницу.");
+      return;
+    }
+
+    const sections = [el.sectionDna, el.sectionVisual, el.sectionAssociative, el.sectionContent].filter(Boolean);
+    const snap = sections.map((s) => ({ node: s, hidden: s.hidden }));
+    sections.forEach((s) => {
+      s.hidden = false;
+    });
+
+    try {
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      /** @type {HTMLElement[]} */
+      const blocks = [];
+      if (el.dnaTableWrap) blocks.push(el.dnaTableWrap);
+      if (el.visualBlock && el.visualBlock.textContent.trim()) blocks.push(el.visualBlock);
+      if (el.associativeBlock && el.associativeBlock.innerHTML.trim()) blocks.push(el.associativeBlock);
+      if (el.contentStrategyBlock && el.contentStrategyBlock.innerHTML.trim()) blocks.push(el.contentStrategyBlock);
+
+      const pdf = new JsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      const cursorYRef = { y: 12 };
+
+      for (let i = 0; i < blocks.length; i++) {
+        const canvas = await captureHtmlElementToCanvas(blocks[i]);
+        addAtomicRasterBlockToPdf(pdf, canvas, cursorYRef);
+      }
+
+      pdf.save(DNA_FILENAME_PDF);
+    } finally {
+      snap.forEach(({ node, hidden }) => {
+        node.hidden = hidden;
+      });
+    }
+  }
+
+  function openDnaExportModal() {
+    if (!state.analysis || !el.dnaExportModal) return;
+    el.dnaExportModal.hidden = false;
+    if (el.btnCloseDnaExport) el.btnCloseDnaExport.focus();
+  }
+
+  function closeDnaExportModal() {
+    if (!el.dnaExportModal) return;
+    el.dnaExportModal.hidden = true;
+  }
+
+  async function runDnaExport(format) {
+    closeDnaExportModal();
+    try {
+      if (format === "html") downloadFullDnaHtml();
+      else if (format === "pdf") await downloadFullDnaPdf();
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось сформировать файл отчёта. Проверьте интернет (CDN) и попробуйте снова.");
+    }
+  }
+
+  el.btnDownloadDna.addEventListener("click", openDnaExportModal);
+  if (el.btnDownloadDnaQuick) el.btnDownloadDnaQuick.addEventListener("click", openDnaExportModal);
 
   el.btnViewDna.addEventListener("click", openModal);
   if (el.btnViewDnaQuick) el.btnViewDnaQuick.addEventListener("click", openModal);
@@ -2131,9 +2409,22 @@ ul.kit strong{display:block;color:#1c1b19;margin-bottom:0.25rem;}
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (!el.modal.hidden) closeModal();
+    if (el.dnaExportModal && !el.dnaExportModal.hidden) closeDnaExportModal();
     if (el.moodboardExportModal && !el.moodboardExportModal.hidden) closeMoodboardExportModal();
     if (el.splitReviewSection && !el.splitReviewSection.hidden && splitReviewPending) cancelSplitUseOriginal();
   });
+
+  if (el.dnaExportModal) {
+    el.dnaExportModal.addEventListener("click", (e) => {
+      if (e.target.matches("[data-close-dna-export]")) closeDnaExportModal();
+      const btn = e.target.closest("[data-dna-export-format]");
+      if (btn) {
+        const fmt = btn.getAttribute("data-dna-export-format");
+        if (fmt) void runDnaExport(fmt);
+      }
+    });
+    if (el.btnCloseDnaExport) el.btnCloseDnaExport.addEventListener("click", closeDnaExportModal);
+  }
 
   if (el.moodboardExportModal) {
     el.moodboardExportModal.addEventListener("click", (e) => {
@@ -2141,7 +2432,7 @@ ul.kit strong{display:block;color:#1c1b19;margin-bottom:0.25rem;}
       const btn = e.target.closest("[data-export-format]");
       if (btn) {
         const fmt = btn.getAttribute("data-export-format");
-        if (fmt) runMoodboardExport(fmt);
+        if (fmt) void runMoodboardExport(fmt);
       }
     });
     if (el.btnCloseMoodboardExport) {

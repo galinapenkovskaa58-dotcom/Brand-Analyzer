@@ -1357,6 +1357,18 @@ textarea {
   gap: 0.65rem;
 }
 
+@media (min-width: 420px) {
+  .export-format-grid--two {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .export-format-grid--two .export-format-btn {
+    flex: 1 1 calc(50% - 0.35rem);
+    min-width: 140px;
+  }
+}
+
 .export-format-btn {
   display: flex;
   flex-direction: column;
