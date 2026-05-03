@@ -37,11 +37,14 @@
   const state = {
     images: [], // { id, file, url, priority }
     analysis: null, // { rows, visualNarrative, recommendations }
-    moodboard: [], // { imageId, reason, dnaElement, archetypeEmotion }
+    moodboard: [], // { imageId }
     dnaTableHtml: "",
   };
 
   let imageIdSeq = 0;
+  let splitReviewNextId = 0;
+  /** @type {{ originalFile: File, items: { blob: Blob, url: string, tempId: number }[], resolve: function(any): void, hint: string } | null} */
+  let splitReviewPending = null;
 
   // ——— DOM ———
   const el = {
@@ -51,6 +54,13 @@
     counter: document.getElementById("imageCounter"),
     warnMin: document.getElementById("warnMinImages"),
     infoMax: document.getElementById("infoMaxImages"),
+    splitBusy: document.getElementById("splitBusy"),
+    splitHint: document.getElementById("splitHint"),
+    splitReviewSection: document.getElementById("splitReviewSection"),
+    splitReviewLead: document.getElementById("splitReviewLead"),
+    splitReviewGrid: document.getElementById("splitReviewGrid"),
+    btnSplitConfirm: document.getElementById("btnSplitConfirm"),
+    btnSplitCancel: document.getElementById("btnSplitCancel"),
     brandForm: document.getElementById("brand-form"),
     btnAnalyze: document.getElementById("btnAnalyze"),
     btnMoodboard: document.getElementById("btnMoodboard"),
@@ -165,20 +175,168 @@
     renderGallery();
   }
 
-  function addFiles(fileList) {
+  function getScreenshotSplitter() {
+    const s = window.BrandAnalyzerScreenshotSplit;
+    return s && typeof s.trySplit === "function" ? s : null;
+  }
+
+  function showSplitBusy(on) {
+    if (el.splitBusy) el.splitBusy.hidden = !on;
+  }
+
+  function showSplitHint(msg) {
+    if (!el.splitHint || !msg) return;
+    el.splitHint.textContent = msg;
+    el.splitHint.hidden = false;
+    clearTimeout(showSplitHint._t);
+    showSplitHint._t = setTimeout(() => {
+      el.splitHint.hidden = true;
+    }, 8000);
+  }
+
+  function blobToFile(blob, name) {
+    return new File([blob], name, { type: blob.type || "image/png", lastModified: Date.now() });
+  }
+
+  function addOneImageFile(file) {
+    if (state.images.length >= MAX_IMAGES) return false;
+    const id = ++imageIdSeq;
+    const url = URL.createObjectURL(file);
+    state.images.push({ id, file, url, priority: false });
+    return true;
+  }
+
+  function revokeSplitReviewItems(items) {
+    items.forEach((it) => URL.revokeObjectURL(it.url));
+  }
+
+  function closeSplitReviewUi() {
+    if (el.splitReviewSection) el.splitReviewSection.hidden = true;
+    if (el.splitReviewGrid) el.splitReviewGrid.innerHTML = "";
+  }
+
+  function renderSplitReviewGrid() {
+    if (!el.splitReviewGrid || !splitReviewPending) return;
+    el.splitReviewGrid.innerHTML = "";
+    splitReviewPending.items.forEach((it) => {
+      const wrap = document.createElement("div");
+      wrap.className = "split-review-item";
+      const image = document.createElement("img");
+      image.src = it.url;
+      image.alt = "Фрагмент скриншота";
+      const rem = document.createElement("button");
+      rem.type = "button";
+      rem.className = "split-review-item__remove";
+      rem.setAttribute("aria-label", "Удалить фрагмент");
+      rem.textContent = "×";
+      rem.addEventListener("click", () => {
+        const idx = splitReviewPending.items.findIndex((x) => x.tempId === it.tempId);
+        if (idx === -1) return;
+        URL.revokeObjectURL(splitReviewPending.items[idx].url);
+        splitReviewPending.items.splice(idx, 1);
+        renderSplitReviewGrid();
+      });
+      wrap.appendChild(image);
+      wrap.appendChild(rem);
+      el.splitReviewGrid.appendChild(wrap);
+    });
+  }
+
+  function openSplitReviewAwaitUser(originalFile, blobs, hint) {
+    return new Promise((resolve) => {
+      const items = blobs.map((blob) => ({
+        blob,
+        url: URL.createObjectURL(blob),
+        tempId: ++splitReviewNextId,
+      }));
+      splitReviewPending = {
+        originalFile,
+        items,
+        resolve,
+        hint: hint || "",
+      };
+      const hintPart = splitReviewPending.hint ? ` (${splitReviewPending.hint})` : "";
+      el.splitReviewLead.textContent = `Найдено ${blobs.length} фрагментов из «${originalFile.name}». Удалите ошибочные миниатюры крестиком, затем нажмите «Добавить фрагменты в галерею» или оставьте целый скриншот.${hintPart}`;
+      el.splitReviewSection.hidden = false;
+      renderSplitReviewGrid();
+      el.splitReviewSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  function confirmSplitAddFragments() {
+    const p = splitReviewPending;
+    if (!p || typeof p.resolve !== "function") return;
+    if (!p.items.length) {
+      alert("Не осталось ни одного фрагмента. Нажмите «Оставить исходный скриншот» или не удаляйте все миниатюры.");
+      return;
+    }
+    const blobs = p.items.map((it) => it.blob);
+    const res = p.resolve;
+    const toRevoke = p.items.slice();
+    splitReviewPending = null;
+    closeSplitReviewUi();
+    revokeSplitReviewItems(toRevoke);
+    res({ useOriginal: false, blobs });
+  }
+
+  function cancelSplitUseOriginal() {
+    const p = splitReviewPending;
+    if (!p || typeof p.resolve !== "function") return;
+    const res = p.resolve;
+    const toRevoke = p.items.slice();
+    splitReviewPending = null;
+    closeSplitReviewUi();
+    revokeSplitReviewItems(toRevoke);
+    res({ useOriginal: true });
+  }
+
+  async function addFiles(fileList) {
     const incoming = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
     if (!incoming.length) return;
 
     let skippedMax = false;
+    const splitter = getScreenshotSplitter();
+
     for (const file of incoming) {
       if (state.images.length >= MAX_IMAGES) {
         skippedMax = true;
         break;
       }
-      const id = ++imageIdSeq;
-      const url = URL.createObjectURL(file);
-      state.images.push({ id, file, url, priority: false });
+
+      if (splitter) {
+        showSplitBusy(true);
+        let result;
+        try {
+          result = await splitter.trySplit(file);
+        } catch (e) {
+          console.error(e);
+          result = { useOriginalOnly: true, hint: "" };
+        }
+        showSplitBusy(false);
+
+        if (!result.useOriginalOnly && result.blobs && result.blobs.length > 1) {
+          const choice = await openSplitReviewAwaitUser(file, result.blobs, result.hint || "");
+          if (!choice.useOriginal && choice.blobs && choice.blobs.length) {
+            const base = (file.name || "screen").replace(/\.[^.]+$/, "") || "screen";
+            for (let i = 0; i < choice.blobs.length; i++) {
+              if (state.images.length >= MAX_IMAGES) {
+                skippedMax = true;
+                break;
+              }
+              addOneImageFile(blobToFile(choice.blobs[i], `${base}-${i + 1}.png`));
+            }
+          } else {
+            if (!addOneImageFile(file)) skippedMax = true;
+          }
+        } else {
+          if (result.hint) showSplitHint(result.hint);
+          if (!addOneImageFile(file)) skippedMax = true;
+        }
+      } else if (!addOneImageFile(file)) {
+        skippedMax = true;
+      }
     }
+
     el.infoMax.hidden = !skippedMax;
     if (skippedMax) {
       setTimeout(() => {
@@ -564,21 +722,7 @@
       picks = sorted.slice(rotateBy).concat(sorted.slice(0, rotateBy)).slice(0, target);
     }
 
-    const archRu = state.analysis.archetype?.ru || "Творец";
-    const emotionShort = state.analysis.rows.find((r) => r.param === "Эмоция")?.description || "Эмоциональный тон бренда";
-
-    const brandLabel = getBrandPayload().brandName || "бренда";
-    state.moodboard = picks.map((img, idx) => {
-      const dnaBits = ["Архетип", "Темы", "Визуальные коды", "Tone of Voice", "Ценности", "Proof Points"];
-      const dnaEl = dnaBits[idx % dnaBits.length];
-      const priorityNote = img.priority ? " Отмечен вами как приоритетный для подачи." : "";
-      return {
-        imageId: img.id,
-        reason: `Выбран как опорный кадр ${idx + 1}/${picks.length} для ${brandLabel}: усиливает читаемость ДНК через согласованность настроения с описанием бренда и повторяемые визуальные паттерны серии, а не только «сильный» кадр.${priorityNote}`,
-        dnaElement: dnaEl,
-        archetypeEmotion: `Архетип: ${archRu}. Эмоция: ${emotionShort.slice(0, 140)}${emotionShort.length > 140 ? "…" : ""}`,
-      };
-    });
+    state.moodboard = picks.map((img) => ({ imageId: img.id }));
 
     renderMoodboard();
     el.sectionMoodboard.hidden = false;
@@ -601,23 +745,7 @@
       im.alt = "Мудборд бренда";
       wrap.appendChild(im);
 
-      const body = document.createElement("div");
-      body.className = "mood-card__body";
-      const t = document.createElement("p");
-      t.className = "mood-card__title";
-      t.textContent = slot.dnaElement;
-      const p = document.createElement("p");
-      p.className = "mood-card__text";
-      p.textContent = slot.reason;
-      const meta = document.createElement("p");
-      meta.className = "mood-card__meta";
-      meta.textContent = slot.archetypeEmotion;
-
-      body.appendChild(t);
-      body.appendChild(p);
-      body.appendChild(meta);
       card.appendChild(wrap);
-      card.appendChild(body);
       el.moodboardGrid.appendChild(card);
     });
   }
@@ -649,25 +777,17 @@
       return;
     }
     const brand = getBrandPayload();
-    const cards = [];
+    const dataUrls = [];
     for (const slot of state.moodboard) {
       const img = state.images.find((i) => i.id === slot.imageId);
       if (!img) continue;
-      const dataUrl = await fileToDataUrl(img.file);
-      cards.push({ dataUrl, slot });
+      dataUrls.push(await fileToDataUrl(img.file));
     }
 
-    const itemsHtml = cards
+    const itemsHtml = dataUrls
       .map(
-        ({ dataUrl, slot }) => `
-      <figure class="card">
-        <img src="${dataUrl}" alt="мудборд" />
-        <figcaption>
-          <strong>${escapeHtml(slot.dnaElement)}</strong>
-          <p>${escapeHtml(slot.reason)}</p>
-          <p class="meta">${escapeHtml(slot.archetypeEmotion)}</p>
-        </figcaption>
-      </figure>`
+        (dataUrl) => `
+      <figure class="card"><img src="${dataUrl}" alt="" /></figure>`
       )
       .join("");
 
@@ -681,9 +801,7 @@ body{font-family:system-ui,sans-serif;margin:2rem;background:#f6f4f1;color:#1c1b
 h1{font-size:1.4rem;}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.25rem;}
 .card{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e8e4de;}
-img{width:100%;display:block;aspect-ratio:4/3;object-fit:cover;}
-figcaption{padding:1rem;font-size:0.9rem;}
-.meta{font-size:0.8rem;color:#8a8780;}
+.card img{width:100%;display:block;aspect-ratio:4/3;object-fit:cover;}
 </style>
 </head>
 <body>
@@ -814,9 +932,14 @@ figcaption{padding:1rem;font-size:0.9rem;}
   // ——— События ———
   el.btnUpload.addEventListener("click", () => el.fileInput.click());
   el.fileInput.addEventListener("change", (e) => {
-    addFiles(e.target.files);
-    el.fileInput.value = "";
+    const fl = e.target.files;
+    void addFiles(fl).finally(() => {
+      el.fileInput.value = "";
+    });
   });
+
+  if (el.btnSplitConfirm) el.btnSplitConfirm.addEventListener("click", confirmSplitAddFragments);
+  if (el.btnSplitCancel) el.btnSplitCancel.addEventListener("click", cancelSplitUseOriginal);
 
   el.btnAnalyze.addEventListener("click", runAnalysis);
   el.btnMoodboard.addEventListener("click", () => buildMoodboardInternal({ rebuild: false }));
@@ -843,6 +966,7 @@ figcaption{padding:1rem;font-size:0.9rem;}
     if (e.key !== "Escape") return;
     if (!el.modal.hidden) closeModal();
     if (el.moodboardExportModal && !el.moodboardExportModal.hidden) closeMoodboardExportModal();
+    if (el.splitReviewSection && !el.splitReviewSection.hidden && splitReviewPending) cancelSplitUseOriginal();
   });
 
   if (el.moodboardExportModal) {

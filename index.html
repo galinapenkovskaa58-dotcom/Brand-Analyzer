@@ -115,7 +115,22 @@
         Загружено максимум 30 изображений — лишние файлы не добавлены.
       </div>
 
-      <p class="hint">В галерее можно удалить лишнее и отметить кадры для приоритета в мудборде.</p>
+      <p class="hint" id="splitBusy" hidden>Анализ составного скриншота…</p>
+      <div class="alert alert--info" id="splitHint" role="status" hidden></div>
+
+      <p class="hint">
+        Если на скриншоте несколько постов в сетке, сервис попробует разрезать его на отдельные кадры. В галерее можно удалить лишнее и отметить кадры для приоритета в мудборде.
+      </p>
+
+      <div class="split-review" id="splitReviewSection" hidden aria-labelledby="split-review-title">
+        <h3 id="split-review-title" class="split-review__title">Фрагменты после авторазделения</h3>
+        <p class="split-review__lead" id="splitReviewLead"></p>
+        <div class="split-review-grid" id="splitReviewGrid" aria-label="Найденные кадры"></div>
+        <div class="split-review__actions btn-row">
+          <button type="button" class="btn btn--accent" id="btnSplitConfirm">Добавить фрагменты в галерею</button>
+          <button type="button" class="btn btn--ghost" id="btnSplitCancel">Оставить исходный скриншот</button>
+        </div>
+      </div>
 
       <div class="gallery" id="gallery" aria-label="Галерея загруженных изображений"></div>
     </section>
@@ -240,6 +255,7 @@
     </div>
   </div>
 
+  <script src="split-screenshot.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" crossorigin="anonymous"></script>
   <script src="script.js"></script>
