@@ -13,6 +13,9 @@
   const MOODBOARD_MAX = 12;
   const DNA_FILENAME = "brand-analyzer-dna.html";
   const MOODBOARD_FILENAME = "brand-analyzer-moodboard.html";
+  const MOODBOARD_FILENAME_PNG = "brand-analyzer-moodboard.png";
+  const MOODBOARD_FILENAME_PDF = "brand-analyzer-moodboard.pdf";
+  const THEME_STORAGE_KEY = "brand-analyzer-theme";
 
   /** 12 архетипов Марк и Пирсон (для маппинга и будущего API) */
   const ARCHETYPES = [
@@ -66,11 +69,15 @@
     sectionMoodboard: document.getElementById("section-moodboard"),
     moodboardGrid: document.getElementById("moodboardGrid"),
     btnDownloadMoodboard: document.getElementById("btnDownloadMoodboard"),
+    moodboardExportModal: document.getElementById("moodboardExportModal"),
+    btnCloseMoodboardExport: document.getElementById("btnCloseMoodboardExport"),
     sectionReco: document.getElementById("section-reco"),
     recoList: document.getElementById("recoList"),
     modal: document.getElementById("dnaModal"),
     modalBody: document.getElementById("dnaModalBody"),
     btnCloseModal: document.getElementById("btnCloseModal"),
+    themeToggle: document.getElementById("themeToggle"),
+    themeToggleLabel: document.getElementById("themeToggleLabel"),
   };
 
   // ——— Утилиты ———
@@ -688,6 +695,122 @@ figcaption{padding:1rem;font-size:0.9rem;}
     downloadTextFile(MOODBOARD_FILENAME, doc, "text/html;charset=utf-8");
   }
 
+  function closeMoodboardExportModal() {
+    if (!el.moodboardExportModal) return;
+    el.moodboardExportModal.hidden = true;
+  }
+
+  function openMoodboardExportModal() {
+    if (!el.moodboardExportModal) return;
+    if (!state.moodboard.length) {
+      alert("Сначала соберите мудборд.");
+      return;
+    }
+    el.moodboardExportModal.hidden = false;
+    if (el.btnCloseMoodboardExport) el.btnCloseMoodboardExport.focus();
+  }
+
+  async function captureMoodboardGridCanvas() {
+    if (typeof html2canvas !== "function") {
+      throw new Error("NO_HTML2CANVAS");
+    }
+    const section = el.sectionMoodboard;
+    const wasHidden = section.hidden;
+    if (wasHidden) section.hidden = false;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    const bg = dark ? "#121110" : "#f6f4f1";
+    try {
+      return await html2canvas(el.moodboardGrid, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        backgroundColor: bg,
+      });
+    } finally {
+      if (wasHidden) section.hidden = true;
+    }
+  }
+
+  function blobFromCanvas(canvas, type, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("TOBLOB"))), type, quality);
+    });
+  }
+
+  async function downloadMoodboardPng() {
+    if (!state.moodboard.length) {
+      alert("Сначала соберите мудборд.");
+      return;
+    }
+    if (typeof html2canvas !== "function") {
+      alert("Не удалось загрузить html2canvas (нужен интернет для CDN). Экспорт в PNG недоступен.");
+      return;
+    }
+    const canvas = await captureMoodboardGridCanvas();
+    const blob = await blobFromCanvas(canvas, "image/png");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = MOODBOARD_FILENAME_PNG;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2500);
+  }
+
+  function appendCanvasToPdf(pdf, canvas, useJpeg) {
+    const imgData = useJpeg ? canvas.toDataURL("image/jpeg", 0.92) : canvas.toDataURL("image/png");
+    const fmt = useJpeg ? "JPEG" : "PNG";
+    const margin = 10;
+    const usableW = pdf.internal.pageSize.getWidth() - margin * 2;
+    const usableH = pdf.internal.pageSize.getHeight() - margin * 2;
+    const imgW = usableW;
+    const imgH = (canvas.height * imgW) / canvas.width;
+
+    let heightLeft = imgH;
+    let y = margin;
+
+    pdf.addImage(imgData, fmt, margin, y, imgW, imgH, undefined, "FAST");
+    heightLeft -= usableH;
+
+    while (heightLeft > 1) {
+      y = margin - (imgH - heightLeft);
+      pdf.addPage();
+      pdf.addImage(imgData, fmt, margin, y, imgW, imgH, undefined, "FAST");
+      heightLeft -= usableH;
+    }
+  }
+
+  async function downloadMoodboardPdf() {
+    if (!state.moodboard.length) {
+      alert("Сначала соберите мудборд.");
+      return;
+    }
+    const jspdfLib = window.jspdf;
+    const JsPDF = jspdfLib && typeof jspdfLib.jsPDF === "function" ? jspdfLib.jsPDF : typeof window.jsPDF === "function" ? window.jsPDF : null;
+    if (typeof html2canvas !== "function" || !JsPDF) {
+      alert("Не удалось загрузить библиотеки для PDF. Проверьте интернет и обновите страницу.");
+      return;
+    }
+    const canvas = await captureMoodboardGridCanvas();
+    const pdf = new JsPDF({ orientation: "p", unit: "mm", format: "a4" });
+    appendCanvasToPdf(pdf, canvas, true);
+    pdf.save(MOODBOARD_FILENAME_PDF);
+  }
+
+  async function runMoodboardExport(format) {
+    closeMoodboardExportModal();
+    try {
+      if (format === "html") await downloadMoodboardHtml();
+      else if (format === "png") await downloadMoodboardPng();
+      else if (format === "pdf") await downloadMoodboardPdf();
+    } catch (err) {
+      console.error(err);
+      alert(
+        "Не удалось сформировать файл мудборда. Для PNG и PDF проверьте интернет (CDN), разрешите загрузку скриптов и попробуйте снова."
+      );
+    }
+  }
+
   // ——— События ———
   el.btnUpload.addEventListener("click", () => el.fileInput.click());
   el.fileInput.addEventListener("change", (e) => {
@@ -717,18 +840,63 @@ figcaption{padding:1rem;font-size:0.9rem;}
     if (e.target.matches("[data-close-modal]")) closeModal();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !el.modal.hidden) closeModal();
+    if (e.key !== "Escape") return;
+    if (!el.modal.hidden) closeModal();
+    if (el.moodboardExportModal && !el.moodboardExportModal.hidden) closeMoodboardExportModal();
   });
 
-  function triggerMoodboardDownload() {
-    downloadMoodboardHtml().catch(() => alert("Не удалось сформировать файл мудборда."));
+  if (el.moodboardExportModal) {
+    el.moodboardExportModal.addEventListener("click", (e) => {
+      if (e.target.matches("[data-close-moodboard-export]")) closeMoodboardExportModal();
+      const btn = e.target.closest("[data-export-format]");
+      if (btn) {
+        const fmt = btn.getAttribute("data-export-format");
+        if (fmt) runMoodboardExport(fmt);
+      }
+    });
+    if (el.btnCloseMoodboardExport) {
+      el.btnCloseMoodboardExport.addEventListener("click", closeMoodboardExportModal);
+    }
   }
 
-  el.btnDownloadMoodboard.addEventListener("click", triggerMoodboardDownload);
-  if (el.btnDownloadMoodboardQuick) el.btnDownloadMoodboardQuick.addEventListener("click", triggerMoodboardDownload);
+  el.btnDownloadMoodboard.addEventListener("click", openMoodboardExportModal);
+  if (el.btnDownloadMoodboardQuick) el.btnDownloadMoodboardQuick.addEventListener("click", openMoodboardExportModal);
 
   el.brandForm.addEventListener("input", updateActionHint);
   el.brandForm.addEventListener("change", updateActionHint);
+
+  // ——— Тема (светлая / тёмная) ———
+  function isDarkTheme() {
+    return document.documentElement.getAttribute("data-theme") === "dark";
+  }
+
+  function applyTheme(dark) {
+    if (dark) document.documentElement.setAttribute("data-theme", "dark");
+    else document.documentElement.removeAttribute("data-theme");
+    try {
+      if (dark) localStorage.setItem(THEME_STORAGE_KEY, "dark");
+      else localStorage.removeItem(THEME_STORAGE_KEY);
+    } catch (e) {
+      /* private mode */
+    }
+    syncThemeToggle();
+  }
+
+  function syncThemeToggle() {
+    const dark = isDarkTheme();
+    const btn = el.themeToggle;
+    const label = el.themeToggleLabel;
+    if (btn) {
+      btn.setAttribute("aria-pressed", dark ? "true" : "false");
+      btn.setAttribute("aria-label", dark ? "Включить светлую тему" : "Включить тёмную тему");
+    }
+    if (label) label.textContent = dark ? "Светлая тема" : "Тёмная тема";
+  }
+
+  if (el.themeToggle) {
+    el.themeToggle.addEventListener("click", () => applyTheme(!isDarkTheme()));
+    syncThemeToggle();
+  }
 
   updateCounter();
   updateActionHint();
