@@ -173,26 +173,58 @@
       <div class="prose" id="visualCodeBlock"></div>
     </section>
 
+    <!-- Ассоциативное поле (заголовок h2 внутри генерируемого HTML) -->
+    <section class="card section-block section-block--report" id="section-associative" aria-label="Ассоциативное поле бренда" hidden>
+      <div class="prose prose--assoc" id="associativeBlock"></div>
+    </section>
+
+    <!-- Контент-стратегия (заголовок h2 внутри генерируемого HTML) -->
+    <section class="card section-block section-block--report" id="section-content" aria-label="Контент-стратегия" hidden>
+      <div class="prose prose--content" id="contentStrategyBlock"></div>
+    </section>
+
     <!-- Мудборд -->
     <section class="card section-block" id="section-moodboard" aria-labelledby="moodboard-heading" hidden>
       <div class="section-block__head">
         <h2 id="moodboard-heading" class="section-title">Мудборд бренда</h2>
-        <p class="section-sub">9–12 кадров из ваших загрузок, отобранных под выявленную ДНК.</p>
+        <p class="section-sub">
+          Визуальная система: архетип → эмоция → визуал → элементы. Только ваши изображения; пояснения связаны с таблицей ДНК.
+        </p>
       </div>
-      <div class="moodboard-grid" id="moodboardGrid"></div>
+
+      <div class="moodboard-capture-root" id="moodboardCaptureRoot">
+        <p class="moodboard-intro" id="moodboardIntro"></p>
+
+        <h3 class="moodboard-block-title">Ключевые кадры</h3>
+        <div class="moodboard-grid" id="moodboardGrid"></div>
+
+        <section class="moodboard-panel" aria-labelledby="mb-colors-title">
+          <h3 id="mb-colors-title" class="moodboard-panel__title">Цвета бренда</h3>
+          <div class="moodboard-swatches" id="moodboardColorsSwatches"></div>
+          <p class="moodboard-panel__lead" id="moodboardColorsCaption"></p>
+        </section>
+
+        <section class="moodboard-panel" aria-labelledby="mb-forms-title">
+          <h3 id="mb-forms-title" class="moodboard-panel__title">Формы и фактуры</h3>
+          <ul class="moodboard-kit-list" id="moodboardFormsList"></ul>
+        </section>
+
+        <section class="moodboard-panel" aria-labelledby="mb-type-title">
+          <h3 id="mb-type-title" class="moodboard-panel__title">Типографика</h3>
+          <ul class="moodboard-kit-list" id="moodboardTypographyList"></ul>
+        </section>
+
+        <section class="moodboard-panel" aria-labelledby="mb-sym-title">
+          <h3 id="mb-sym-title" class="moodboard-panel__title">Символы и элементы</h3>
+          <ul class="moodboard-kit-list" id="moodboardSymbolsList"></ul>
+        </section>
+      </div>
+
       <div class="btn-row">
         <button type="button" class="btn btn--secondary" id="btnDownloadMoodboard">Скачать мудборд</button>
       </div>
     </section>
 
-    <!-- Рекомендации -->
-    <section class="card section-block" id="section-reco" aria-labelledby="reco-heading" hidden>
-      <div class="section-block__head">
-        <h2 id="reco-heading" class="section-title">Рекомендации</h2>
-        <p class="section-sub">Практические шаги, согласованные с архетипом и визуальным кодом.</p>
-      </div>
-      <ul class="reco-list" id="recoList"></ul>
-    </section>
   </main>
 
   <footer class="site-footer">
