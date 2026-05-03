@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brand Analyzer — ДНК бренда и мудборд</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page-bg" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="site-header__inner">
+      <div class="logo">
+        <span class="logo__mark" aria-hidden="true"></span>
+        <div>
+          <p class="logo__title">Brand Analyzer</p>
+          <p class="logo__tagline">ДНК бренда из ваших материалов</p>
+        </div>
+      </div>
+      <p class="site-header__note">Только ваши изображения. Без фотобанков.</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="card card--hero" aria-labelledby="intro-heading">
+      <h1 id="intro-heading" class="hero-title">Профессиональный отчёт о ДНК бренда</h1>
+      <p class="hero-lead">
+        Загрузите скриншоты и фото из аккаунта бренда. Сервис свяжет визуал с текстовым описанием и соберёт мудборд,
+        отражающий именно вашу подачу — не «красивые картинки из интернета».
+      </p>
+    </section>
+
+    <!-- Данные бренда -->
+    <section class="card section-block" id="section-brand" aria-labelledby="brand-heading">
+      <div class="section-block__head">
+        <h2 id="brand-heading" class="section-title">Данные бренда</h2>
+        <p class="section-sub">Заполните форму — это основа для выводов в отчёте.</p>
+      </div>
+      <form class="brand-form" id="brand-form" novalidate>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field__label">Название бренда</span>
+            <input type="text" name="brandName" id="brandName" placeholder="Например, Aurora Skincare" required />
+          </label>
+          <label class="field">
+            <span class="field__label">Ниша бренда</span>
+            <input type="text" name="niche" id="niche" placeholder="Косметика, IT, мода…" required />
+          </label>
+          <label class="field field--full">
+            <span class="field__label">Ссылка (Instagram / сайт / TikTok)</span>
+            <input type="url" name="link" id="brandLink" placeholder="https://" />
+          </label>
+          <label class="field field--full">
+            <span class="field__label">Краткое описание бренда</span>
+            <textarea name="description" id="brandDescription" rows="4" placeholder="Миссия, аудитория, отличия, характер коммуникации…" required></textarea>
+          </label>
+        </div>
+      </form>
+    </section>
+
+    <!-- Загрузка изображений -->
+    <section class="card section-block" id="section-upload" aria-labelledby="upload-heading">
+      <div class="section-block__head">
+        <h2 id="upload-heading" class="section-title">Загруженные изображения</h2>
+        <p class="section-sub">Рекомендуем 12–30 скриншотов из вашего аккаунта. Хранение только в текущей сессии браузера.</p>
+      </div>
+
+      <div class="upload-toolbar" role="group" aria-label="Действия с изображениями">
+        <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        <button type="button" class="btn btn--primary" id="btnUploadImages">Загрузить изображения</button>
+        <span class="upload-counter" id="imageCounter" aria-live="polite">Изображений: 0 / 30</span>
+      </div>
+
+      <div class="alert alert--warn" id="warnMinImages" role="status" hidden>
+        Для качественного анализа загрузите минимум 9 изображений.
+      </div>
+      <div class="alert alert--info" id="infoMaxImages" role="status" hidden>
+        Загружено максимум 30 изображений — лишние файлы не добавлены.
+      </div>
+
+      <p class="hint">В галерее можно удалить лишнее и отметить кадры для приоритета в мудборде.</p>
+
+      <div class="gallery" id="gallery" aria-label="Галерея загруженных изображений"></div>
+    </section>
+
+    <!-- Действия анализа -->
+    <section class="card section-block section-block--actions" aria-labelledby="actions-heading">
+      <h2 id="actions-heading" class="visually-hidden">Действия</h2>
+      <div class="action-row">
+        <button type="button" class="btn btn--accent" id="btnAnalyze">Проанализировать бренд</button>
+        <button type="button" class="btn btn--secondary" id="btnMoodboard">Собрать мудборд</button>
+        <button type="button" class="btn btn--ghost" id="btnRebuildMoodboard">Пересобрать мудборд</button>
+      </div>
+      <div class="action-row action-row--secondary" id="postAnalysisToolbar" hidden>
+        <button type="button" class="btn btn--secondary" id="btnDownloadDnaQuick">Скачать таблицу</button>
+        <button type="button" class="btn btn--secondary" id="btnViewDnaQuick">Посмотреть таблицу</button>
+        <button type="button" class="btn btn--secondary" id="btnDownloadMoodboardQuick">Скачать мудборд</button>
+      </div>
+      <p class="action-note" id="actionHint">Сначала заполните данные бренда и загрузите изображения.</p>
+    </section>
+
+    <!-- ДНК бренда -->
+    <section class="card section-block section-block--report" id="section-dna" aria-labelledby="dna-heading" hidden>
+      <div class="section-block__head">
+        <h2 id="dna-heading" class="section-title">ДНК бренда</h2>
+        <p class="section-sub">Связка описания, ниши и визуальных паттернов — не абстрактные фразы.</p>
+      </div>
+      <div class="report-table-wrap" id="dnaTableWrap"></div>
+      <div class="btn-row" id="dnaActions">
+        <button type="button" class="btn btn--secondary" id="btnDownloadDna" title="Сохранить как brand-analyzer-dna.html">Скачать</button>
+        <button type="button" class="btn btn--secondary" id="btnViewDna">Посмотреть</button>
+      </div>
+    </section>
+
+    <!-- Визуальный код (расшифровка) -->
+    <section class="card section-block" id="section-visual" aria-labelledby="visual-heading" hidden>
+      <div class="section-block__head">
+        <h2 id="visual-heading" class="section-title">Визуальный код</h2>
+        <p class="section-sub">Цвет, свет, композиция, фактуры, ритм — как они подкрепляют ДНК в ваших кадрах.</p>
+      </div>
+      <div class="prose" id="visualCodeBlock"></div>
+    </section>
+
+    <!-- Мудборд -->
+    <section class="card section-block" id="section-moodboard" aria-labelledby="moodboard-heading" hidden>
+      <div class="section-block__head">
+        <h2 id="moodboard-heading" class="section-title">Мудборд бренда</h2>
+        <p class="section-sub">9–12 кадров из ваших загрузок, отобранных под выявленную ДНК.</p>
+      </div>
+      <div class="moodboard-grid" id="moodboardGrid"></div>
+      <div class="btn-row">
+        <button type="button" class="btn btn--secondary" id="btnDownloadMoodboard">Скачать мудборд</button>
+      </div>
+    </section>
+
+    <!-- Рекомендации -->
+    <section class="card section-block" id="section-reco" aria-labelledby="reco-heading" hidden>
+      <div class="section-block__head">
+        <h2 id="reco-heading" class="section-title">Рекомендации</h2>
+        <p class="section-sub">Практические шаги, согласованные с архетипом и визуальным кодом.</p>
+      </div>
+      <ul class="reco-list" id="recoList"></ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Brand Analyzer · отчёт формируется локально в браузере. Подключение OpenAI API — следующий этап развития.</p>
+  </footer>
+
+  <!-- Модальное окно таблицы ДНК -->
+  <div class="modal" id="dnaModal" role="dialog" aria-modal="true" aria-labelledby="dnaModalTitle" hidden>
+    <div class="modal__backdrop" data-close-modal></div>
+    <div class="modal__panel">
+      <header class="modal__header">
+        <h2 id="dnaModalTitle" class="modal__title">ДНК бренда</h2>
+        <button type="button" class="btn btn--icon" id="btnCloseModal" aria-label="Закрыть">×</button>
+      </header>
+      <div class="modal__body" id="dnaModalBody"></div>
+      <footer class="modal__footer">
+        <button type="button" class="btn btn--primary" data-close-modal>Закрыть</button>
+      </footer>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
